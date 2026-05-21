@@ -86,3 +86,44 @@ export const logout = () =>
 
 export const checkAuth = (userId) =>
   fetch(`${BASE}/auth/me?userId=${userId}`).then(r => r.json())
+
+// ── DEVOLUCIONES Y POLÍTICA DE RETORNO ─────────────────────────────
+export const requestReturn = (data) =>
+  fetch(`${BASE}/returns/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())
+
+export const getReturns = (clientEmail) =>
+  fetch(`${BASE}/returns/${clientEmail}`).then(r => r.json())
+
+export const getReturnDetails = (returnId) =>
+  fetch(`${BASE}/returns/details/${returnId}`).then(r => r.json())
+
+// ── POLÍTICAS Y LEGAL ──────────────────────────────────────────────
+export const getPolicies = () =>
+  Promise.all([
+    fetch(`${BASE}/policies/privacy`).then(r => r.json()),
+    fetch(`${BASE}/policies/terms`).then(r => r.json()),
+    fetch(`${BASE}/policies/returns`).then(r => r.json())
+  ]).then(([privacy, terms, returns]) => ({
+    privacy, terms, returns
+  }))
+
+export const getPrivacyPolicy = () =>
+  fetch(`${BASE}/policies/privacy`).then(r => r.json())
+
+export const getTermsPolicy = () =>
+  fetch(`${BASE}/policies/terms`).then(r => r.json())
+
+export const getReturnPolicy = () =>
+  fetch(`${BASE}/policies/returns`).then(r => r.json())
+
+// ── CONSENTIMIENTO GDPR Y COOKIES ──────────────────────────────────
+export const saveCookieConsent = (cookieTypes, clientEmail) =>
+  fetch(`${BASE}/consent/cookies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cookieTypes, clientEmail })
+  }).then(r => r.json())

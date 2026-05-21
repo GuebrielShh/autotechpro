@@ -7,7 +7,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ── BASE DE DATOS EN MEMORIA ──────────────────────────────────────
+// ── MIDDLEWARE PARA COOKIES Y GDPR ────────────────────────────────
+app.use((req, res, next) => {
+  // Middleware para manejo de cookies
+  res.locals.userConsent = req.headers.cookie?.includes('gdpr_accepted=true') || false;
+  next();
+});
+
 
 const generateSlots = () => {
   const slots = [];
@@ -30,6 +36,8 @@ const DB = {
   appointments: [],
   orders: [],
   reviews: [],
+  returns: [],
+  gdprConsents: [],
   coupons: [
     { code: 'BIENVENIDA20', discount: 20, maxUses: 100, used: 5, active: true, minAmount: 100000 },
     { code: 'DESCUENTO50K', discount: 15, maxUses: 50, used: 12, active: true, minAmount: 150000 },
@@ -156,26 +164,61 @@ app.get('/api/appointments/:code', (req, res) => {
 
 // ── RUTAS ÓRDENES ─────────────────────────────────────────────────
 app.post('/api/orders', (req, res) => {
-  const { items, client, paymentMethod } = req.body;
+  const { items, client, paymentMethod, gdprConsent, termsAccepted, returnsAccepted } = req.body;
+  
   if (!items || !items.length || !client)
     return res.status(400).json({ error: 'Datos incompletos' });
+  
+  // Validar aceptación de términos y políticas
+  if (!gdprConsent)
+    return res.status(400).json({ error: 'Debe aceptar el tratamiento de datos personales' });
+  if (!termsAccepted)
+    return res.status(400).json({ error: 'Debe aceptar los términos y condiciones' });
+  if (!returnsAccepted)
+    return res.status(400).json({ error: 'Debe aceptar la política de devoluciones' });
+  
   try {
+    // Validación de límite de cantidad por producto (máx 5 unidades)
+    const MAX_ITEMS_PER_PRODUCT = 5;
     const enriched = items.map(item => {
+      if (item.qty > MAX_ITEMS_PER_PRODUCT)
+        throw new Error(`Límite máximo ${MAX_ITEMS_PER_PRODUCT} unidades por producto. Intentaste: ${item.qty}`);
+      
       const part = DB.parts.find(p => p.id === item.partId);
-      if (!part || part.stock < item.qty) throw new Error('Stock insuficiente: ' + part?.name);
+      if (!part || part.stock < item.qty) 
+        throw new Error('Stock insuficiente: ' + part?.name);
       part.stock -= item.qty;
       return { ...part, qty: item.qty, subtotal: part.price * item.qty };
     });
+    
     const total = enriched.reduce((s, i) => s + i.subtotal, 0);
     const order = {
       id: uuidv4(),
       orderNumber: 'ORD-' + Date.now().toString().slice(-8),
       client, items: enriched, total, paymentMethod,
       status: 'pagado',
+      returnable: true,
+      returnDeadline: new Date(Date.now() + 30*86400000).toISOString().split('T')[0], // 30 días
       estimatedDelivery: new Date(Date.now() + 3*86400000).toISOString().split('T')[0],
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      gdprConsent: true,
+      termsAccepted: true,
+      returnsAccepted: true
     };
     DB.orders.push(order);
+    
+    // Registrar consentimiento GDPR
+    DB.gdprConsents.push({
+      id: uuidv4(),
+      clientEmail: client.email,
+      orderNumber: order.orderNumber,
+      termsAccepted,
+      gdprConsent,
+      returnsAccepted,
+      acceptedAt: new Date().toISOString(),
+      ipAddress: 'tracking' // En producción capturar IP real
+    });
+    
     res.status(201).json(order);
   } catch(e) {
     res.status(400).json({ error: e.message });
@@ -211,7 +254,306 @@ app.put('/api/clients/:id', (req, res) => {
   });
 });
 
+// ── SISTEMA DE DEVOLUCIONES ──────────────────────────────────────
+app.post('/api/returns/request', (req, res) => {
+  const { orderId, reason, items } = req.body;
+  
+  if (!orderId || !reason || !items || !items.length)
+    return res.status(400).json({ error: 'Datos incompletos para la devolución' });
+  
+  const order = DB.orders.find(o => o.id === orderId);
+  if (!order) return res.status(404).json({ error: 'Orden no encontrada' });
+  
+  // Validar plazo de devolución (30 días)
+  const orderDate = new Date(order.createdAt);
+  const daysElapsed = Math.floor((Date.now() - orderDate) / (1000 * 60 * 60 * 24));
+  
+  if (daysElapsed > 30)
+    return res.status(400).json({ 
+      error: 'El plazo de devolución ha expirado (máximo 30 días desde la compra)',
+      daysElapsed
+    });
+  
+  // Validar items a devolver
+  const returnItems = items.map(ri => {
+    const orderItem = order.items.find(oi => oi.id === ri.itemId);
+    if (!orderItem)
+      throw new Error('Producto no encontrado en la orden');
+    return {
+      ...orderItem,
+      qtyReturn: Math.min(ri.qty, orderItem.qty),
+      refundAmount: orderItem.price * Math.min(ri.qty, orderItem.qty)
+    };
+  });
+  
+  const totalRefund = returnItems.reduce((s, i) => s + i.refundAmount, 0);
+  
+  const returnRequest = {
+    id: uuidv4(),
+    returnNumber: 'RET-' + Date.now().toString().slice(-8),
+    orderId,
+    orderNumber: order.orderNumber,
+    clientEmail: order.client.email,
+    reason,
+    items: returnItems,
+    totalRefund,
+    status: 'pendiente', // pendiente -> aprobada -> rechazada -> procesada
+    requestedAt: new Date().toISOString(),
+    approvedAt: null,
+    refundedAt: null
+  };
+  
+  DB.returns.push(returnRequest);
+  
+  res.status(201).json({
+    success: true,
+    message: 'Solicitud de devolución recibida. Será revisada en 24-48 horas.',
+    returnRequest
+  });
+});
+
+// Obtener solicitudes de devolución del cliente
+app.get('/api/returns/:clientEmail', (req, res) => {
+  const returns = DB.returns.filter(r => r.clientEmail === req.params.clientEmail);
+  res.json({
+    totalRequests: returns.length,
+    returns: returns.sort((a,b) => new Date(b.requestedAt) - new Date(a.requestedAt))
+  });
+});
+
+// Obtener detalles de una devolución
+app.get('/api/returns/details/:returnId', (req, res) => {
+  const returnReq = DB.returns.find(r => r.id === req.params.returnId);
+  if (!returnReq) return res.status(404).json({ error: 'Devolución no encontrada' });
+  res.json(returnReq);
+});
+
+// ── POLÍTICAS Y DOCUMENTOS LEGALES ────────────────────────────────
+app.get('/api/policies/privacy', (req, res) => {
+  res.json({
+    policyName: 'Política de Privacidad',
+    version: '1.0',
+    effectiveDate: '2026-01-15',
+    lastUpdated: '2026-05-21',
+    content: `
+# POLÍTICA DE PRIVACIDAD - AutoTechPro
+
+## 1. Recopilación de Datos
+
+AutoTechPro recopila información personal incluyendo:
+- Nombre completo
+- Correo electrónico
+- Número de teléfono
+- Información del vehículo (marca, modelo, año, placa, kilometraje)
+- Historial de compras y servicios
+- Datos de ubicación (opcional)
+
+## 2. Uso de Datos
+
+Los datos se utilizan para:
+- Procesar pedidos y servicios
+- Mejorar la experiencia del usuario
+- Enviar notificaciones y ofertas personalizadas
+- Mantener seguridad y prevenir fraude
+- Análisis de comportamiento del cliente
+
+## 3. Protección de Datos
+
+- Datos encriptados en tránsito (HTTPS/TLS)
+- Almacenamiento seguro en servidores protegidos
+- Acceso restringido a personal autorizado
+- Cumplimiento con GDPR y normativa local
+
+## 4. Derechos del Usuario
+
+Tienes derecho a:
+- Acceder a tus datos personales
+- Solicitar corrección de datos inexactos
+- Solicitar eliminación de datos
+- Exportar tus datos
+- Revocar consentimiento en cualquier momento
+
+## 5. Cookies
+
+Utilizamos cookies para:
+- Mantener sesiones de usuario
+- Recordar preferencias
+- Analizar uso del sitio
+- Mejorar funcionalidad
+
+Tipo de cookies:
+- Sesión: Necesarias para funcionar
+- Persistentes: Preferencias del usuario
+- Analíticas: Comportamiento anónimo
+
+## 6. Contacto
+
+Para consultas sobre privacidad: privacy@autotechpro.com
+Responsable: Departamento Legal
+Teléfono: +57-1-XXXX-XXXX
+    `
+  });
+});
+
+app.get('/api/policies/terms', (req, res) => {
+  res.json({
+    policyName: 'Términos y Condiciones',
+    version: '1.0',
+    effectiveDate: '2026-01-15',
+    lastUpdated: '2026-05-21',
+    content: `
+# TÉRMINOS Y CONDICIONES - AutoTechPro
+
+## 1. Aceptación de Términos
+
+Al usar AutoTechPro, aceptas estos términos completamente. Si no estás de acuerdo, no uses el servicio.
+
+## 2. Servicios Ofrecidos
+
+AutoTechPro ofrece:
+- Agendamiento de citas para servicios mecánicos
+- Venta de repuestos y accesorios
+- Sistema de lealtad y puntos
+- Recomendaciones de mantenimiento
+
+## 3. Responsabilidades del Usuario
+
+El usuario es responsable de:
+- Proporcionar información correcta
+- Mantener confidencialidad de credenciales
+- Usar el servicio legalmente
+- No interferir con la operación del sistema
+- Pagar las órdenes completas
+
+## 4. Limitación de Responsabilidad
+
+AutoTechPro no es responsable por:
+- Daños indirectos o consecuentes
+- Pérdida de datos del usuario
+- Interrupciones de servicio
+- Contenido de terceros
+
+## 5. Propiedad Intelectual
+
+Todo contenido, diseños, y código pertenecen a AutoTechPro. 
+Prohibido reproducir o usar sin autorización.
+
+## 6. Modificaciones
+
+AutoTechPro se reserva derecho de:
+- Modificar servicios
+- Cambiar precios
+- Actualizar términos (aviso previo)
+- Discontinuar servicios
+
+## 7. Indemnización
+
+El usuario acepta indemnizar a AutoTechPro por cualquier daño o reclamación derivada del uso del servicio.
+
+## 8. Ley Aplicable
+
+Estos términos se rigen por las leyes de Colombia y jurisdicción colombiana.
+    `
+  });
+});
+
+app.get('/api/policies/returns', (req, res) => {
+  res.json({
+    policyName: 'Política de Devoluciones',
+    version: '1.0',
+    effectiveDate: '2026-01-15',
+    lastUpdated: '2026-05-21',
+    content: `
+# POLÍTICA DE DEVOLUCIONES Y GARANTÍA - AutoTechPro
+
+## 1. Plazo de Devolución
+
+- Repuestos: 30 días desde la compra
+- Servicios: No reembolsable (aplica crédito de tienda)
+- Electrónica: 15 días
+
+## 2. Condiciones para Devolver
+
+El producto debe:
+- Estar en condición original
+- No haber sido usado o instalado
+- Contar con empaque original
+- Incluir factura/comprobante
+
+## 3. Proceso de Devolución
+
+1. Solicitar devolución en el portal
+2. Esperar aprobación (24-48 horas)
+3. Recibir etiqueta de envío prepagada
+4. Enviar producto
+5. Recibir reembolso en 5-7 días hábiles
+
+## 4. Excepciones
+
+No aceptamos devoluciones por:
+- Daño por uso indebido
+- Instalación incorrecta
+- Cambio de opinión (fuera de plazo)
+- Productos descatalogados
+
+## 5. Reembolsos
+
+El reembolso cubre:
+- Precio del producto
+- NO cubre costo de envío original
+- Sí cubre retorno (etiqueta prepagada)
+
+## 6. Garantía
+
+Productos defectuosos:
+- Garantía de fábrica hasta 1 año
+- Cubiertos dentro del plazo de devolución
+- Reemplazo o reembolso completo
+
+## 7. Servicios Mecánicos
+
+Los servicios incluyen garantía de 30 días en:
+- Mano de obra
+- Piezas reemplazadas
+
+Excepciones: Desgaste normal, cambios de conducción.
+
+## 8. Contacto
+
+Para solicitar devolución: returns@autotechpro.com
+Teléfono: +57-1-XXXX-XXXX
+WhatsApp: +57-xxx-xxx-xxxx
+    `
+  });
+});
+
+// Endpoints para aceptación de cookies
+app.post('/api/consent/cookies', (req, res) => {
+  const { cookieTypes, clientEmail } = req.body;
+  
+  if (!cookieTypes)
+    return res.status(400).json({ error: 'Tipos de cookies no especificados' });
+  
+  const consent = {
+    id: uuidv4(),
+    clientEmail: clientEmail || 'anonymous',
+    essential: cookieTypes.essential || false,
+    analytics: cookieTypes.analytics || false,
+    marketing: cookieTypes.marketing || false,
+    preferences: cookieTypes.preferences || false,
+    consentedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 365*86400000).toISOString() // 1 año
+  };
+  
+  res.json({
+    success: true,
+    message: 'Preferencias de cookies guardadas',
+    consent
+  });
+});
+
 // ── STATS ─────────────────────────────────────────────────────────
+
 app.get('/api/stats', (req, res) => {
   res.json({
     totalAppointments: DB.appointments.length,
