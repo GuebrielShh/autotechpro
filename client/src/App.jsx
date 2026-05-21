@@ -520,8 +520,15 @@ function StorePage({ cart, setCart, user, onCheckout }) {
 
   const addToCart = (part) =>
     setCart(prev => {
+      const MAX_QTY = 10
       const ex = prev.find(i => i.partId === part.id)
-      if (ex) return prev.map(i => i.partId===part.id ? {...i,qty:i.qty+1} : i)
+      if (ex) {
+        if (ex.qty >= MAX_QTY) {
+          alert(`⚠️ Límite máximo: ${MAX_QTY} unidades por producto`)
+          return prev
+        }
+        return prev.map(i => i.partId===part.id ? {...i,qty:i.qty+1} : i)
+      }
       return [...prev, { partId: part.id, qty: 1, part }]
     })
 
@@ -581,8 +588,22 @@ function CartPanel({ cart, setCart, open, onClose, user, onCheckout }) {
   const [loading, setLoading]     = useState(false)
 
   const total = cart.reduce((s,i) => s + i.part.price * i.qty, 0)
-  const updQty = (pid, d) =>
-    setCart(prev => prev.map(i=>i.partId===pid ? {...i,qty:Math.max(0,i.qty+d)} : i).filter(i=>i.qty>0))
+  const updQty = (pid, d) => {
+    const MAX_QTY = 10
+    setCart(prev => {
+      return prev.map(i => {
+        if (i.partId === pid) {
+          const newQty = Math.max(0, i.qty + d)
+          if (newQty > MAX_QTY) {
+            alert(`⚠️ Límite máximo: ${MAX_QTY} unidades por producto`)
+            return i
+          }
+          return {...i, qty: newQty}
+        }
+        return i
+      }).filter(i => i.qty > 0)
+    })
+  }
 
   const handleCheckout = () => {
     if (!user) {

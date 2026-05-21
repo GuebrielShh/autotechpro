@@ -178,8 +178,8 @@ app.post('/api/orders', (req, res) => {
     return res.status(400).json({ success: false, error: 'Debe aceptar la política de devoluciones' });
   
   try {
-    // Validación de límite de cantidad por producto (máx 5 unidades)
-    const MAX_ITEMS_PER_PRODUCT = 5;
+    // Validación de límite de cantidad por producto (máx 10 unidades)
+    const MAX_ITEMS_PER_PRODUCT = 10;
     const enriched = items.map(item => {
       if (item.qty > MAX_ITEMS_PER_PRODUCT)
         throw new Error(`Límite máximo ${MAX_ITEMS_PER_PRODUCT} unidades por producto. Intentaste: ${item.qty}`);
