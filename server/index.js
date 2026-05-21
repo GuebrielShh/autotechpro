@@ -36,6 +36,11 @@ const DB = {
     { code: 'REFERIDO10', discount: 10, maxUses: 999, used: 45, active: true, minAmount: 80000 }
   ],
   contacts: [],
+  users: [
+    { id: 'u1', email: 'maria@example.com', password: 'maria123', name: 'María González', clientId: 'c1', createdAt: '2026-01-15' },
+    { id: 'u2', email: 'carlos@example.com', password: 'carlos123', name: 'Carlos Mendez', clientId: 'c2', createdAt: '2026-02-20' },
+    { id: 'u3', email: 'ana@example.com', password: 'ana123', name: 'Ana Rodríguez', clientId: 'c3', createdAt: '2026-03-10' }
+  ],
   clients: [
     {
       id: 'c1',
@@ -48,6 +53,30 @@ const DB = {
       lastServiceDate: '2026-04-15',
       nextRecommendedKm: 55000,
       totalSpent: 850000
+    },
+    {
+      id: 'c2',
+      name: 'Carlos Mendez',
+      email: 'carlos@example.com',
+      phone: '301-987-6543',
+      vehicle: { make: 'Toyota', model: 'Corolla', year: 2020, plate: 'XYZ-789', km: 32000 },
+      tier: 'Plata',
+      points: 650,
+      lastServiceDate: '2026-03-20',
+      nextRecommendedKm: 40000,
+      totalSpent: 450000
+    },
+    {
+      id: 'c3',
+      name: 'Ana Rodríguez',
+      email: 'ana@example.com',
+      phone: '302-555-8765',
+      vehicle: { make: 'Chevrolet', model: 'Spark', year: 2019, plate: 'DEF-456', km: 28500 },
+      tier: 'Bronce',
+      points: 300,
+      lastServiceDate: '2026-04-01',
+      nextRecommendedKm: 30000,
+      totalSpent: 220000
     }
   ],
   services: [
@@ -168,6 +197,99 @@ app.get('/api/stats', (req, res) => {
     revenue:           DB.orders.reduce((s, o) => s + o.total, 0),
     servicesAvailable: DB.services.length,
     partsInStock:      DB.parts.reduce((s, p) => s + p.stock, 0)
+  });
+});
+
+// ── AUTENTICACIÓN ─────────────────────────────────────────────────
+app.post('/api/auth/register', (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password || !name)
+    return res.status(400).json({ error: 'Faltan campos requeridos' });
+  
+  // Verificar si ya existe
+  if (DB.users.find(u => u.email === email))
+    return res.status(409).json({ error: 'El email ya está registrado' });
+  
+  const userId = 'u' + Date.now();
+  const clientId = 'c' + Date.now();
+  
+  // Crear usuario
+  const user = {
+    id: userId,
+    email,
+    password, // En producción usar hash!
+    name,
+    clientId,
+    createdAt: new Date().toISOString()
+  };
+  DB.users.push(user);
+  
+  // Crear cliente asociado
+  const client = {
+    id: clientId,
+    name,
+    email,
+    phone: '',
+    vehicle: { make: '', model: '', year: null, plate: '', km: 0 },
+    tier: 'Bronce',
+    points: 0,
+    lastServiceDate: null,
+    nextRecommendedKm: 10000,
+    totalSpent: 0
+  };
+  DB.clients.push(client);
+  
+  res.status(201).json({
+    success: true,
+    user: { id: user.id, email: user.email, name: user.name, clientId: user.clientId }
+  });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password)
+    return res.status(400).json({ error: 'Email y contraseña requeridos' });
+  
+  const user = DB.users.find(u => u.email === email && u.password === password);
+  if (!user)
+    return res.status(401).json({ error: 'Credenciales inválidas' });
+  
+  const client = DB.clients.find(c => c.id === user.clientId);
+  
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      clientId: user.clientId
+    },
+    client: client
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.json({ success: true, message: 'Sesión cerrada' });
+});
+
+// ── VERIFICAR SESIÓN ──────────────────────────────────────────────
+app.get('/api/auth/me', (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(401).json({ error: 'No autenticado' });
+  
+  const user = DB.users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+  
+  const client = DB.clients.find(c => c.id === user.clientId);
+  
+  res.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      clientId: user.clientId
+    },
+    client: client
   });
 });
 

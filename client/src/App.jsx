@@ -200,10 +200,122 @@ const css = `
   .appt-month { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
   .order-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
   .order-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gray-300); }
+  
+  /* LOGIN */
+  .auth-container { max-width: 420px; margin: 4rem auto; padding: 3rem 2.5rem; border: .5px solid var(--gray-300); border-radius: var(--radius-lg); background: var(--white); }
+  .auth-title { font-family: var(--font-display); font-size: 32px; letter-spacing: 1px; margin-bottom: 1.5rem; text-align: center; }
+  .auth-tab { display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: .5px solid var(--gray-300); }
+  .auth-tab button { flex: 1; padding: 12px; background: none; border: none; font-weight: 600; color: var(--gray-500); border-bottom: 2px solid transparent; cursor: pointer; }
+  .auth-tab button.active { color: var(--red); border-bottom-color: var(--red); }
+  .auth-field { margin-bottom: 1.25rem; }
+  .auth-btn { width: 100%; background: var(--red); color: #fff; border: none; padding: 12px; border-radius: var(--radius); font-weight: 600; cursor: pointer; margin-top: 1rem; }
+  .auth-btn:hover { background: var(--red-dark); }
+  .auth-msg { text-align: center; font-size: 13px; color: var(--gray-500); margin-top: 1rem; }
+  .auth-error { background: var(--red-light); color: var(--red); padding: 12px; border-radius: var(--radius); margin-bottom: 1rem; font-size: 13px; }
+  .user-info { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .user-menu { display: flex; align-items: center; gap: 10px; }
+  .user-name { color: #fff; font-weight: 500; font-size: 13px; }
 `
 
+// ── LOGIN PAGE ────────────────────────────────────────────────────
+function LoginPage({ onLogin }) {
+  const [tab, setTab] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleLogin = async () => {
+    setError('')
+    if (!email || !password) { setError('Completa todos los campos'); return; }
+    setLoading(true)
+    try {
+      const res = await API.login(email, password)
+      if (res.success) {
+        localStorage.setItem('user', JSON.stringify(res.user))
+        localStorage.setItem('client', JSON.stringify(res.client))
+        onLogin(res.user)
+      } else {
+        setError(res.error || 'Error al iniciar sesión')
+      }
+    } catch(e) {
+      setError('Error de conexión')
+    }
+    setLoading(false)
+  }
+
+  const handleRegister = async () => {
+    setError('')
+    if (!email || !password || !name) { setError('Completa todos los campos'); return; }
+    if (password.length < 6) { setError('La contraseña debe tener mínimo 6 caracteres'); return; }
+    setLoading(true)
+    try {
+      const res = await API.register({ email, password, name })
+      if (res.success) {
+        setEmail('')
+        setPassword('')
+        setName('')
+        setTab('login')
+        setError('')
+      } else {
+        setError(res.error || 'Error al registrarse')
+      }
+    } catch(e) {
+      setError('Error de conexión')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="page">
+      <div className="auth-container">
+        <div className="auth-title">AUTO<span style={{color:'var(--red)'}}>TECH</span>PRO</div>
+        
+        <div className="auth-tab">
+          <button className={`${tab==='login'?'active':''}`} onClick={()=>setTab('login')}>Inicia Sesión</button>
+          <button className={`${tab==='register'?'active':''}`} onClick={()=>setTab('register')}>Registrate</button>
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        {tab === 'login' ? (
+          <>
+            <div className="auth-field">
+              <label>Email</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" onKeyPress={e=>e.key==='Enter'&&handleLogin()}/>
+            </div>
+            <div className="auth-field">
+              <label>Contraseña</label>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••" onKeyPress={e=>e.key==='Enter'&&handleLogin()}/>
+            </div>
+            <button className="auth-btn" onClick={handleLogin} disabled={loading}>{loading?'Cargando...':'Inicia Sesión'}</button>
+            <div className="auth-msg">Prueba: maria@example.com / maria123</div>
+          </>
+        ) : (
+          <>
+            <div className="auth-field">
+              <label>Nombre</label>
+              <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Tu nombre completo"/>
+            </div>
+            <div className="auth-field">
+              <label>Email</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com"/>
+            </div>
+            <div className="auth-field">
+              <label>Contraseña</label>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres"/>
+            </div>
+            <button className="auth-btn" onClick={handleRegister} disabled={loading}>{loading?'Cargando...':'Crear Cuenta'}</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── BOOKING PAGE ──────────────────────────────────────────────────
-function BookingPage() {
+function BookingPage({ user }) {
   const [step, setStep] = useState(1)
   const [services, setServices]   = useState([])
   const [dates, setDates]         = useState([])
@@ -211,7 +323,7 @@ function BookingPage() {
   const [selService, setSelService] = useState(null)
   const [selDate, setSelDate]     = useState(null)
   const [selSlot, setSelSlot]     = useState(null)
-  const [form, setForm]           = useState({ clientName:'', clientEmail:'', clientPhone:'', make:'', model:'', year:'', plate:'', notes:'' })
+  const [form, setForm]           = useState({ clientName: user?.name || '', clientEmail: user?.email || '', clientPhone:'', make:'', model:'', year:'', plate:'', notes:'' })
   const [loading, setLoading]     = useState(false)
   const [result, setResult]       = useState(null)
   const [error, setError]         = useState('')
@@ -632,15 +744,19 @@ function LookupPage() {
 }
 
 // ── CLIENT PORTAL ─────────────────────────────────────────────────
-function ClientPortal() {
-  const [client, setClient] = useState(null)
+function ClientPortal({ user, client: initialClient }) {
+  const [client, setClient] = useState(initialClient || null)
   const [stats, setStats]   = useState(null)
   const [tab, setTab]       = useState('perfil')
 
   useEffect(() => {
-    API.getClient('c1').then(setClient)
+    if (initialClient) {
+      setClient(initialClient)
+    } else if (user?.clientId) {
+      API.getClient(user.clientId).then(setClient)
+    }
     API.getStats().then(setStats)
-  }, [])
+  }, [user, initialClient])
 
   if (!client) return <div className="page"><p className="muted">Cargando...</p></div>
 
@@ -850,12 +966,58 @@ function ServicesCatalog({ onBook }) {
 
 // ── ROOT APP ──────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPage]       = useState('inicio')
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem('user')
+    return stored ? JSON.parse(stored) : null
+  })
+  const [client, setClient] = useState(() => {
+    const stored = localStorage.getItem('client')
+    return stored ? JSON.parse(stored) : null
+  })
+  
+  const [page, setPage] = useState('inicio')
   const [cartOpen, setCartOpen] = useState(false)
-  const [cart, setCart]       = useState([])
+  const [cart, setCart] = useState([])
   const cartCount = cart.reduce((s,i) => s+i.qty, 0)
 
   const nav = (p) => { setPage(p); setCartOpen(false); window.scrollTo(0,0) }
+  
+  const handleLogin = (userData) => {
+    setUser(userData)
+    nav('inicio')
+  }
+  
+  const handleLogout = () => {
+    localStorage.removeItem('user')
+    localStorage.removeItem('client')
+    setUser(null)
+    setClient(null)
+    setCart([])
+    nav('inicio')
+  }
+
+  if (!user) {
+    return (
+      <>
+        <style>{css}</style>
+        <div className="app">
+          <nav className="nav">
+            <div className="nav-logo" onClick={()=>{}}>AUTO<span>TECH</span>PRO</div>
+          </nav>
+          <main style={{flex:1}}>
+            <LoginPage onLogin={handleLogin}/>
+          </main>
+          <footer className="footer">
+            <div className="footer-inner">
+              <div className="footer-logo">AUTO<span>TECH</span>PRO</div>
+              <div>Cartagena-Bolívar, Colombia · www.autotechpro.com</div>
+              <div>© 2026 AutoTechPro</div>
+            </div>
+          </footer>
+        </div>
+      </>
+    )
+  }
 
   const links = [['inicio','Inicio'],['servicios','Servicios'],['tienda','Tienda'],['agendar','Agendar cita'],['consultar','Mis citas'],['cliente','Mi cuenta']]
 
@@ -870,18 +1032,22 @@ export default function App() {
               <button key={k} className={`nav-btn ${page===k?'active':''}`} onClick={()=>nav(k)}>{l}</button>
             ))}
           </div>
-          <button className="cart-btn" onClick={()=>setCartOpen(o=>!o)}>
-            🛒 Carrito {cartCount>0 && <span className="badge">{cartCount}</span>}
-          </button>
+          <div className="user-menu">
+            <span className="user-name">👤 {user.name}</span>
+            <button className="cart-btn" onClick={()=>setCartOpen(o=>!o)}>
+              🛒 {cartCount>0 && <span className="badge">{cartCount}</span>}
+            </button>
+            <button className="btn btn-sm btn-outline" onClick={handleLogout}>Salir</button>
+          </div>
         </nav>
 
         <main style={{flex:1}}>
           {page==='inicio'    && <HomePage onNavigate={nav}/>}
           {page==='servicios' && <ServicesCatalog onBook={()=>nav('agendar')}/>}
           {page==='tienda'    && <StorePage cart={cart} setCart={setCart}/>}
-          {page==='agendar'   && <BookingPage/>}
+          {page==='agendar'   && <BookingPage user={user}/>}
           {page==='consultar' && <LookupPage/>}
-          {page==='cliente'   && <ClientPortal/>}
+          {page==='cliente'   && <ClientPortal user={user} client={client}/>}
         </main>
 
         <CartPanel cart={cart} setCart={setCart} open={cartOpen} onClose={()=>setCartOpen(false)}/>

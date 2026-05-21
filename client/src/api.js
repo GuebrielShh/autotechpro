@@ -58,3 +58,24 @@ export const submitContact = (data) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json())
+
+// ── AUTENTICACIÓN ─────────────────────────────────────────────────
+export const register = (data) =>
+  fetch(`${BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())
+
+export const login = (email, password) =>
+  fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  }).then(r => r.json())
+
+export const logout = () =>
+  fetch(`${BASE}/auth/logout`, { method: 'POST' }).then(r => r.json())
+
+export const checkAuth = (userId) =>
+  fetch(`${BASE}/auth/me?userId=${userId}`).then(r => r.json())
