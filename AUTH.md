@@ -32,6 +32,14 @@ Vehículo: Chevrolet Spark 2019
 Estado: Bronce (puntos: 300)
 ```
 
+### 👤 Usuario de Inventario: Anthony
+```
+Email: anthony@autotechpro.com
+Contraseña: anthony2026
+Rol: Gerente de Inventario
+Acceso: Gestión completa de stock y precios
+```
+
 ---
 
 ## 🔧 Endpoints de Autenticación

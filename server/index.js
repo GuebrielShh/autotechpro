@@ -47,7 +47,8 @@ const DB = {
   users: [
     { id: 'u1', email: 'maria@example.com', password: 'maria123', name: 'María González', clientId: 'c1', createdAt: '2026-01-15' },
     { id: 'u2', email: 'carlos@example.com', password: 'carlos123', name: 'Carlos Mendez', clientId: 'c2', createdAt: '2026-02-20' },
-    { id: 'u3', email: 'ana@example.com', password: 'ana123', name: 'Ana Rodríguez', clientId: 'c3', createdAt: '2026-03-10' }
+    { id: 'u3', email: 'ana@example.com', password: 'ana123', name: 'Ana Rodríguez', clientId: 'c3', createdAt: '2026-03-10' },
+    { id: 'u_inventory', email: 'anthony@autotechpro.com', password: 'anthony2026', name: 'Anthony', role: 'inventory_manager', createdAt: '2026-01-01' }
   ],
   clients: [
     {
