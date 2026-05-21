@@ -593,15 +593,45 @@ function CartPanel({ cart, setCart, open, onClose, user, onCheckout }) {
   }
 
   const pay = async () => {
-    if (!buyerName || !buyerEmail) return
+    if (!buyerName || !buyerEmail) {
+      alert('Por favor completa nombre y email')
+      return
+    }
+    
+    if (cart.length === 0) {
+      alert('Tu carrito está vacío')
+      return
+    }
+    
     setLoading(true)
-    const res = await API.placeOrder({
-      items: cart.map(i=>({partId:i.partId,qty:i.qty})),
-      client: {name:buyerName,email:buyerEmail},
-      paymentMethod: payMethod
-    })
-    setLoading(false)
-    if (!res.error) { setOrder(res); setCart([]); setCheckout('done') }
+    try {
+      const res = await API.placeOrder({
+        items: cart.map(i=>({partId:i.partId,qty:i.qty})),
+        client: {name:buyerName,email:buyerEmail},
+        paymentMethod: payMethod,
+        gdprConsent: true,
+        termsAccepted: true,
+        returnsAccepted: true
+      })
+      
+      setLoading(false)
+      
+      if (res.error) {
+        alert('Error: ' + res.error)
+        return
+      }
+      
+      if (res.success || res.orderNumber) {
+        setOrder(res)
+        setCart([])
+        setCheckout('done')
+      } else {
+        alert('Hubo un problema procesando tu orden')
+      }
+    } catch(error) {
+      setLoading(false)
+      alert('Error de conexión: ' + error.message)
+    }
   }
 
   return (

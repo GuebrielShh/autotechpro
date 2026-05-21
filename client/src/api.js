@@ -111,6 +111,56 @@ export const getPolicies = () =>
     privacy, terms, returns
   }))
 
+// ── COOKIES Y CONSENTIMIENTO GDPR ──────────────────────────────────
+export const saveCookieConsent = (settings, email) =>
+  fetch(`${BASE}/gdpr/consent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings, email })
+  }).then(r => r.json())
+
+export const getCookieConsent = (email) =>
+  fetch(`${BASE}/gdpr/consent?email=${email}`).then(r => r.json())
+
+// ── SUSCRIPCIONES ─────────────────────────────────────────────────
+export const getSubscription = (email) =>
+  fetch(`${BASE}/subscriptions/${email}`).then(r => r.json())
+
+export const subscribeToPlan = (email, plan) =>
+  fetch(`${BASE}/subscriptions/subscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, plan })
+  }).then(r => r.json())
+
+export const cancelSubscription = (email) =>
+  fetch(`${BASE}/subscriptions/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  }).then(r => r.json())
+
+// ── INVENTARIO (Gerente: Anthony) ─────────────────────────────────
+export const getInventory = () =>
+  fetch(`${BASE}/inventory`).then(r => r.json())
+
+export const getInventoryItem = (id) =>
+  fetch(`${BASE}/inventory/${id}`).then(r => r.json())
+
+export const updateInventoryItem = (id, data) =>
+  fetch(`${BASE}/inventory/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())
+
+export const createInventoryItem = (data) =>
+  fetch(`${BASE}/inventory`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())
+
 export const getPrivacyPolicy = () =>
   fetch(`${BASE}/policies/privacy`).then(r => r.json())
 
@@ -119,11 +169,3 @@ export const getTermsPolicy = () =>
 
 export const getReturnPolicy = () =>
   fetch(`${BASE}/policies/returns`).then(r => r.json())
-
-// ── CONSENTIMIENTO GDPR Y COOKIES ──────────────────────────────────
-export const saveCookieConsent = (cookieTypes, clientEmail) =>
-  fetch(`${BASE}/consent/cookies`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookieTypes, clientEmail })
-  }).then(r => r.json())

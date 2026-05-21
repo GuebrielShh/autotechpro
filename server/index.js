@@ -167,15 +167,15 @@ app.post('/api/orders', (req, res) => {
   const { items, client, paymentMethod, gdprConsent, termsAccepted, returnsAccepted } = req.body;
   
   if (!items || !items.length || !client)
-    return res.status(400).json({ error: 'Datos incompletos' });
+    return res.status(400).json({ success: false, error: 'Datos incompletos' });
   
   // Validar aceptación de términos y políticas
   if (!gdprConsent)
-    return res.status(400).json({ error: 'Debe aceptar el tratamiento de datos personales' });
+    return res.status(400).json({ success: false, error: 'Debe aceptar el tratamiento de datos personales' });
   if (!termsAccepted)
-    return res.status(400).json({ error: 'Debe aceptar los términos y condiciones' });
+    return res.status(400).json({ success: false, error: 'Debe aceptar los términos y condiciones' });
   if (!returnsAccepted)
-    return res.status(400).json({ error: 'Debe aceptar la política de devoluciones' });
+    return res.status(400).json({ success: false, error: 'Debe aceptar la política de devoluciones' });
   
   try {
     // Validación de límite de cantidad por producto (máx 5 unidades)
@@ -219,10 +219,21 @@ app.post('/api/orders', (req, res) => {
       ipAddress: 'tracking' // En producción capturar IP real
     });
     
-    res.status(201).json(order);
+    res.status(201).json({
+      success: true,
+      ...order
+    });
   } catch(e) {
-    res.status(400).json({ error: e.message });
+    res.status(400).json({ 
+      success: false,
+      error: e.message 
+    });
   }
+});
+
+app.get('/api/orders/:email', (req, res) => {
+  const orders = DB.orders.filter(o => o.client.email === req.params.email);
+  res.json(orders);
 });
 
 // ── RUTAS CLIENTES ────────────────────────────────────────────────
@@ -795,6 +806,208 @@ app.post('/api/contact', (req, res) => {
     success: true,
     message: 'Tu mensaje ha sido recibido. Nos pondremos en contacto pronto.',
     ticketId: contact.id
+  });
+});
+
+// ── SUSCRIPCIONES ─────────────────────────────────────────────────
+DB.subscriptions = {};
+
+app.get('/api/subscriptions/:email', (req, res) => {
+  const sub = DB.subscriptions[req.params.email];
+  res.json(sub || null);
+});
+
+app.post('/api/subscriptions/subscribe', (req, res) => {
+  const { email, plan } = req.body;
+  if (!email || !plan)
+    return res.status(400).json({ error: 'Email y plan son requeridos' });
+  
+  const validPlans = ['basic', 'silver', 'gold', 'platinum'];
+  if (!validPlans.includes(plan))
+    return res.status(400).json({ error: 'Plan no válido' });
+  
+  const subscription = {
+    email,
+    plan,
+    status: 'activo',
+    startDate: new Date().toISOString(),
+    renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    price: {
+      basic: 0,
+      silver: 29900,
+      gold: 59900,
+      platinum: 99900
+    }[plan]
+  };
+  
+  DB.subscriptions[email] = subscription;
+  
+  res.status(201).json({
+    success: true,
+    subscription
+  });
+});
+
+app.post('/api/subscriptions/cancel', (req, res) => {
+  const { email } = req.body;
+  if (!email)
+    return res.status(400).json({ error: 'Email es requerido' });
+  
+  delete DB.subscriptions[email];
+  
+  res.json({
+    success: true,
+    message: 'Suscripción cancelada'
+  });
+});
+
+// ── INVENTARIO (Gerente: Anthony) ─────────────────────────────────
+DB.inventory = [
+  {
+    id: 'inv1',
+    name: 'Filtro de Aire K&N Premium',
+    sku: 'KN-33-2304-PREM',
+    category: 'Filtros',
+    description: 'Filtro de aire lavable de alto rendimiento',
+    price: 165000,
+    stock: 18,
+    minStock: 5,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv2',
+    name: 'Pastillas de Freno Ceramic Brembo',
+    sku: 'BRE-P85020-CERAM',
+    category: 'Frenos',
+    description: 'Pastillas cerámicas para máximo rendimiento',
+    price: 125000,
+    stock: 12,
+    minStock: 8,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv3',
+    name: 'Aceite Sintético Total 5W-40 5L',
+    sku: 'TOT-5W40-5L',
+    category: 'Lubricantes',
+    description: 'Aceite sintético completo para motor',
+    price: 135000,
+    stock: 35,
+    minStock: 10,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv4',
+    name: 'Bujías Iridium NGK (Set 4)',
+    sku: 'NGK-IRID-SET4',
+    category: 'Encendido',
+    description: 'Juego de 4 bujías iridio de larga duración',
+    price: 145000,
+    stock: 9,
+    minStock: 5,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv5',
+    name: 'Batería Optima Dual Purpose',
+    sku: 'OPT-8040-180',
+    category: 'Eléctrico',
+    description: 'Batería doble propósito con ciclo profundo',
+    price: 520000,
+    stock: 4,
+    minStock: 3,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv6',
+    name: 'Líquido Refrigerante Valvoline',
+    sku: 'VAL-COOL-1L',
+    category: 'Refrigeración',
+    description: 'Refrigerante de larga vida para todo tipo de motor',
+    price: 45000,
+    stock: 28,
+    minStock: 10,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv7',
+    name: 'Amortiguadores KYB Excel-G (par)',
+    sku: 'KYB-EXCEL-PAIR',
+    category: 'Suspensión',
+    description: 'Amortiguadores de suspensión de calidad OEM',
+    price: 340000,
+    stock: 3,
+    minStock: 2,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    id: 'inv8',
+    name: 'Correa de Distribución Contitech',
+    sku: 'CONTI-BELT-DIST',
+    category: 'Motor',
+    description: 'Correa de distribución de precisión alemana',
+    price: 185000,
+    stock: 6,
+    minStock: 3,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  }
+];
+
+app.get('/api/inventory', (req, res) => {
+  // Verificar que es Anthony o admin
+  res.json(DB.inventory);
+});
+
+app.get('/api/inventory/:id', (req, res) => {
+  const item = DB.inventory.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item no encontrado' });
+  res.json(item);
+});
+
+app.put('/api/inventory/:id', (req, res) => {
+  // Solo Anthony puede actualizar
+  const { stock, price, minStock } = req.body;
+  const item = DB.inventory.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item no encontrado' });
+  
+  if (stock !== undefined) item.stock = stock;
+  if (price !== undefined) item.price = price;
+  if (minStock !== undefined) item.minStock = minStock;
+  item.lastUpdated = new Date().toISOString();
+  
+  res.json({
+    success: true,
+    item
+  });
+});
+
+app.post('/api/inventory', (req, res) => {
+  // Solo Anthony puede crear
+  const { name, sku, category, description, price, stock, minStock } = req.body;
+  
+  if (!name || !sku || !category || !price || stock === undefined)
+    return res.status(400).json({ error: 'Campos requeridos' });
+  
+  const newItem = {
+    id: uuidv4(),
+    name, sku, category, description,
+    price, stock, minStock: minStock || 5,
+    managedBy: 'Anthony',
+    lastUpdated: new Date().toISOString()
+  };
+  
+  DB.inventory.push(newItem);
+  res.status(201).json({
+    success: true,
+    item: newItem
   });
 });
 
