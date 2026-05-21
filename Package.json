@@ -2,6 +2,8 @@
   "name": "autotechpro",
   "version": "1.0.0",
   "scripts": {
+    "start": "node server/index.js",
+    "build": "cd client && npm install && npm run build",
     "server": "nodemon server/index.js",
     "client": "cd client && npm run dev",
     "dev": "concurrently \"npm run server\" \"npm run client\""
@@ -14,5 +16,8 @@
   "devDependencies": {
     "nodemon": "^3.0.0",
     "concurrently": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
