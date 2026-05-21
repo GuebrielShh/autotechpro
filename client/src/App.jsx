@@ -507,7 +507,7 @@ function BookingPage({ user }) {
 }
 
 // ── STORE PAGE ────────────────────────────────────────────────────
-function StorePage({ cart, setCart }) {
+function StorePage({ cart, setCart, user, onCheckout }) {
   const [parts, setParts]       = useState([])
   const [search, setSearch]     = useState('')
   const [catFilter, setCatFilter] = useState('')
@@ -572,17 +572,25 @@ function StorePage({ cart, setCart }) {
 }
 
 // ── CART PANEL ────────────────────────────────────────────────────
-function CartPanel({ cart, setCart, open, onClose }) {
+function CartPanel({ cart, setCart, open, onClose, user, onCheckout }) {
   const [checkout, setCheckout]   = useState('cart')
   const [payMethod, setPayMethod] = useState('MercadoPago')
-  const [buyerName, setBuyerName] = useState('')
-  const [buyerEmail, setBuyerEmail] = useState('')
+  const [buyerName, setBuyerName] = useState(user?.name || '')
+  const [buyerEmail, setBuyerEmail] = useState(user?.email || '')
   const [order, setOrder]         = useState(null)
   const [loading, setLoading]     = useState(false)
 
   const total = cart.reduce((s,i) => s + i.part.price * i.qty, 0)
   const updQty = (pid, d) =>
     setCart(prev => prev.map(i=>i.partId===pid ? {...i,qty:Math.max(0,i.qty+d)} : i).filter(i=>i.qty>0))
+
+  const handleCheckout = () => {
+    if (!user) {
+      onCheckout()
+    } else {
+      setCheckout('checkout')
+    }
+  }
 
   const pay = async () => {
     if (!buyerName || !buyerEmail) return
@@ -679,8 +687,8 @@ function CartPanel({ cart, setCart, open, onClose }) {
                 <span className="muted">Total</span>
                 <span className="cart-total-val">{fmt(total)}</span>
               </div>
-              <button className="btn btn-primary" style={{width:'100%'}} onClick={()=>setCheckout('checkout')}>
-                Proceder al pago →
+              <button className="btn btn-primary" style={{width:'100%'}} onClick={handleCheckout}>
+                {user ? 'Proceder al pago →' : '🔐 Inicia sesión para comprar'}
               </button>
             </div>
           )}
@@ -1069,13 +1077,30 @@ export default function App() {
   const [page, setPage] = useState('inicio')
   const [cartOpen, setCartOpen] = useState(false)
   const [cart, setCart] = useState([])
+  const [loginRequired, setLoginRequired] = useState(false)
+  const [nextPageAfterLogin, setNextPageAfterLogin] = useState(null)
   const cartCount = cart.reduce((s,i) => s+i.qty, 0)
 
   const nav = (p) => { setPage(p); setCartOpen(false); window.scrollTo(0,0) }
   
+  const navRequiresLogin = (pageName) => {
+    if (!user) {
+      setLoginRequired(true)
+      setNextPageAfterLogin(pageName)
+    } else {
+      nav(pageName)
+    }
+  }
+  
   const handleLogin = (userData) => {
     setUser(userData)
-    nav('inicio')
+    if (nextPageAfterLogin) {
+      nav(nextPageAfterLogin)
+      setNextPageAfterLogin(null)
+    } else {
+      nav('inicio')
+    }
+    setLoginRequired(false)
   }
   
   const handleLogout = () => {
@@ -1087,13 +1112,16 @@ export default function App() {
     nav('inicio')
   }
 
-  if (!user) {
+  if (loginRequired) {
     return (
       <>
         <style>{css}</style>
         <div className="app">
           <nav className="nav">
-            <div className="nav-logo" onClick={()=>{}}>AUTO<span>TECH</span>PRO</div>
+            <div className="nav-logo" onClick={()=>{ setLoginRequired(false); setNextPageAfterLogin(null) }}>AUTO<span>TECH</span>PRO</div>
+            <div style={{marginLeft: 'auto'}}>
+              <button className="btn btn-sm btn-outline" onClick={()=>{ setLoginRequired(false); setNextPageAfterLogin(null) }}>Volver</button>
+            </div>
           </nav>
           <main style={{flex:1}}>
             <LoginPage onLogin={handleLogin}/>
@@ -1110,7 +1138,9 @@ export default function App() {
     )
   }
 
-  const links = [['inicio','Inicio'],['servicios','Servicios'],['tienda','Tienda'],['agendar','Agendar cita'],['consultar','Mis citas'],['cliente','Mi cuenta']]
+  const userLinks = user 
+    ? [['inicio','Inicio'],['servicios','Servicios'],['tienda','Tienda'],['agendar','Agendar cita'],['consultar','Mis citas'],['cliente','Mi cuenta']]
+    : [['inicio','Inicio'],['servicios','Servicios'],['tienda','Tienda']]
 
   return (
     <>
@@ -1119,29 +1149,40 @@ export default function App() {
         <nav className="nav">
           <div className="nav-logo" onClick={()=>nav('inicio')}>AUTO<span>TECH</span>PRO</div>
           <div className="nav-links">
-            {links.map(([k,l])=>(
+            {userLinks.map(([k,l])=>(
               <button key={k} className={`nav-btn ${page===k?'active':''}`} onClick={()=>nav(k)}>{l}</button>
             ))}
           </div>
           <div className="user-menu">
-            <span className="user-name">👤 {user.name}</span>
-            <button className="cart-btn" onClick={()=>setCartOpen(o=>!o)}>
-              🛒 {cartCount>0 && <span className="badge">{cartCount}</span>}
-            </button>
-            <button className="btn btn-sm btn-outline" onClick={handleLogout}>Salir</button>
+            {user ? (
+              <>
+                <span className="user-name">👤 {user.name}</span>
+                <button className="cart-btn" onClick={()=>setCartOpen(o=>!o)}>
+                  🛒 {cartCount>0 && <span className="badge">{cartCount}</span>}
+                </button>
+                <button className="btn btn-sm btn-outline" onClick={handleLogout}>Salir</button>
+              </>
+            ) : (
+              <>
+                <button className="cart-btn" onClick={()=>setCartOpen(o=>!o)}>
+                  🛒 {cartCount>0 && <span className="badge">{cartCount}</span>}
+                </button>
+                <button className="btn btn-sm btn-primary" onClick={()=>setLoginRequired(true)}>Inicia sesión</button>
+              </>
+            )}
           </div>
         </nav>
 
         <main style={{flex:1}}>
           {page==='inicio'    && <HomePage onNavigate={nav}/>}
-          {page==='servicios' && <ServicesCatalog onBook={()=>nav('agendar')}/>}
-          {page==='tienda'    && <StorePage cart={cart} setCart={setCart}/>}
-          {page==='agendar'   && <BookingPage user={user}/>}
+          {page==='servicios' && <ServicesCatalog onBook={()=>navRequiresLogin('agendar')}/>}
+          {page==='tienda'    && <StorePage cart={cart} setCart={setCart} user={user} onCheckout={()=>setLoginRequired(!user)}/>}
+          {page==='agendar'   && user && <BookingPage user={user}/>}
           {page==='consultar' && <LookupPage/>}
-          {page==='cliente'   && <ClientPortal user={user} client={client}/>}
+          {page==='cliente'   && user && <ClientPortal user={user} client={client}/>}
         </main>
 
-        <CartPanel cart={cart} setCart={setCart} open={cartOpen} onClose={()=>setCartOpen(false)}/>
+        <CartPanel cart={cart} setCart={setCart} open={cartOpen} onClose={()=>setCartOpen(false)} user={user} onCheckout={()=>setLoginRequired(!user)}/>
 
         <footer className="footer">
           <div className="footer-inner">
