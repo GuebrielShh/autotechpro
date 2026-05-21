@@ -21,3 +21,40 @@ export const placeOrder = (data) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(r => r.json())
+
+export const getLoyaltyStatus = () => 
+  fetch(`${BASE}/loyalty/status`).then(r => r.json())
+
+export const submitReview = (data) =>
+  fetch(`${BASE}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())
+
+export const getReviews = () =>
+  fetch(`${BASE}/reviews`).then(r => r.json())
+
+export const validateCoupon = (code, amount) =>
+  fetch(`${BASE}/coupons/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, amount })
+  }).then(r => r.json())
+
+export const applyCoupon = (code, orderId) =>
+  fetch(`${BASE}/coupons/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, orderId })
+  }).then(r => r.json())
+
+export const getRecommendations = (clientId) =>
+  fetch(`${BASE}/recommendations/${clientId}`).then(r => r.json())
+
+export const submitContact = (data) =>
+  fetch(`${BASE}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())

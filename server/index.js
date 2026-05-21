@@ -29,6 +29,13 @@ const generateSlots = () => {
 const DB = {
   appointments: [],
   orders: [],
+  reviews: [],
+  coupons: [
+    { code: 'BIENVENIDA20', discount: 20, maxUses: 100, used: 5, active: true, minAmount: 100000 },
+    { code: 'DESCUENTO50K', discount: 15, maxUses: 50, used: 12, active: true, minAmount: 150000 },
+    { code: 'REFERIDO10', discount: 10, maxUses: 999, used: 45, active: true, minAmount: 80000 }
+  ],
+  contacts: [],
   clients: [
     {
       id: 'c1',
@@ -37,7 +44,10 @@ const DB = {
       phone: '300-123-4567',
       vehicle: { make: 'Honda', model: 'Civic', year: 2018, plate: 'ABC-123', km: 45000 },
       tier: 'Oro',
-      points: 1250
+      points: 1250,
+      lastServiceDate: '2026-04-15',
+      nextRecommendedKm: 55000,
+      totalSpent: 850000
     }
   ],
   services: [
@@ -158,6 +168,147 @@ app.get('/api/stats', (req, res) => {
     revenue:           DB.orders.reduce((s, o) => s + o.total, 0),
     servicesAvailable: DB.services.length,
     partsInStock:      DB.parts.reduce((s, p) => s + p.stock, 0)
+  });
+});
+
+// ── SISTEMA DE LEALTAD ────────────────────────────────────────────
+app.get('/api/loyalty/status', (req, res) => {
+  const client = DB.clients[0]; // Demo: siempre usa María
+  res.json({
+    points: client.points,
+    pointsValue: Math.floor(client.points / 10) * 10, // $10 por cada 10 pts
+    tier: client.tier,
+    benefits: {
+      'Bronce': '5% descuento',
+      'Plata': '10% descuento',
+      'Oro': '15% descuento',
+      'Platinum': '20% descuento + Servicio gratis cada 5 servicios'
+    },
+    nextTierAt: 5000
+  });
+});
+
+// ── VALORACIONES Y REVIEWS ────────────────────────────────────────
+app.post('/api/reviews', (req, res) => {
+  const { appointmentCode, rating, comment, clientName, clientEmail } = req.body;
+  if (!appointmentCode || !rating || rating < 1 || rating > 5)
+    return res.status(400).json({ error: 'Rating debe ser entre 1-5' });
+  
+  const review = {
+    id: uuidv4(),
+    appointmentCode,
+    rating,
+    comment: comment || '',
+    clientName,
+    clientEmail,
+    createdAt: new Date().toISOString()
+  };
+  DB.reviews.push(review);
+  
+  // Agregar puntos de lealtad por review
+  const client = DB.clients.find(c => c.email === clientEmail);
+  if (client) client.points += 50; // 50 pts por review
+  
+  res.status(201).json(review);
+});
+
+app.get('/api/reviews', (req, res) => {
+  const avgRating = DB.reviews.length > 0 
+    ? (DB.reviews.reduce((s, r) => s + r.rating, 0) / DB.reviews.length).toFixed(1)
+    : 'Sin reviews aún';
+  
+  res.json({
+    averageRating: avgRating,
+    totalReviews: DB.reviews.length,
+    reviews: DB.reviews.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10)
+  });
+});
+
+// ── CUPONES Y DESCUENTOS ──────────────────────────────────────────
+app.post('/api/coupons/validate', (req, res) => {
+  const { code, amount } = req.body;
+  const coupon = DB.coupons.find(c => c.code === code.toUpperCase());
+  
+  if (!coupon) return res.status(404).json({ error: 'Cupón no encontrado' });
+  if (!coupon.active) return res.status(400).json({ error: 'Cupón inactivo' });
+  if (coupon.used >= coupon.maxUses) return res.status(400).json({ error: 'Cupón agotado' });
+  if (amount < coupon.minAmount) return res.status(400).json({ error: `Monto mínimo $${coupon.minAmount}` });
+  
+  const discount = Math.floor((amount * coupon.discount) / 100);
+  res.json({ valid: true, discount, discountPercent: coupon.discount, finalAmount: amount - discount });
+});
+
+app.post('/api/coupons/apply', (req, res) => {
+  const { code, orderId } = req.body;
+  const coupon = DB.coupons.find(c => c.code === code.toUpperCase());
+  if (!coupon) return res.status(404).json({ error: 'Cupón no encontrado' });
+  coupon.used++;
+  res.json({ applied: true, message: `Cupón ${code} aplicado exitosamente` });
+});
+
+// ── RECOMENDACIONES DE MANTENIMIENTO ──────────────────────────────
+app.get('/api/recommendations/:clientId', (req, res) => {
+  const client = DB.clients.find(c => c.id === req.params.clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  
+  const recommendations = [];
+  const km = client.vehicle.km;
+  
+  if (km % 10000 < 2000) recommendations.push({
+    type: 'Mantenimiento',
+    service: 'Cambio de Aceite y Filtro',
+    reason: `Tu vehículo se acerca a los ${Math.ceil(km/10000)*10000} km`,
+    price: 85000,
+    urgency: 'URGENTE'
+  });
+  
+  if (km % 50000 < 5000) recommendations.push({
+    type: 'Mantenimiento Mayor',
+    service: 'Mantenimiento 50.000 km',
+    reason: `Mantenimiento preventivo programado`,
+    price: 320000,
+    urgency: 'ALTA'
+  });
+  
+  if (km > 60000) recommendations.push({
+    type: 'Revisión',
+    service: 'Revisión de Frenos Completa',
+    reason: `Revisar sistema de frenos después de 60k km`,
+    price: 180000,
+    urgency: 'MEDIA'
+  });
+  
+  res.json({
+    clientName: client.name,
+    currentKm: km,
+    recommendations: recommendations.length > 0 ? recommendations : [{ 
+      type: 'Información',
+      message: 'Tu vehículo está en buen estado. ¡Próxima revisión en ' + ((Math.ceil(km/10000)+1)*10000 - km) + ' km!'
+    }]
+  });
+});
+
+// ── FORMULARIO DE CONTACTO ────────────────────────────────────────
+app.post('/api/contact', (req, res) => {
+  const { name, email, subject, message } = req.body;
+  if (!name || !email || !subject || !message)
+    return res.status(400).json({ error: 'Todos los campos son requeridos' });
+  
+  const contact = {
+    id: uuidv4(),
+    name, email, subject, message,
+    status: 'nuevo',
+    createdAt: new Date().toISOString()
+  };
+  DB.contacts.push(contact);
+  
+  // En producción, aquí se enviaría un email
+  console.log(`📧 Nuevo contacto: ${name} (${email}) - ${subject}`);
+  
+  res.status(201).json({
+    success: true,
+    message: 'Tu mensaje ha sido recibido. Nos pondremos en contacto pronto.',
+    ticketId: contact.id
   });
 });
 
