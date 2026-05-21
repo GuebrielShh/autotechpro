@@ -6,6 +6,13 @@ export const getDates       = ()         => fetch(`${BASE}/appointments/dates`).
 export const getSlots       = (date)     => fetch(`${BASE}/appointments/slots?date=${date}`).then(r => r.json())
 export const getAppointment = (code)     => fetch(`${BASE}/appointments/${code}`).then(r => r.json())
 export const getClient      = (id)       => fetch(`${BASE}/clients/${id}`).then(r => r.json())
+
+export const updateClient = (id, data) =>
+  fetch(`${BASE}/clients/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json())
 export const getStats       = ()         => fetch(`${BASE}/stats`).then(r => r.json())
 
 export const bookAppointment = (data) =>

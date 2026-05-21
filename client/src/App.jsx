@@ -748,15 +748,59 @@ function ClientPortal({ user, client: initialClient }) {
   const [client, setClient] = useState(initialClient || null)
   const [stats, setStats]   = useState(null)
   const [tab, setTab]       = useState('perfil')
+  const [editMode, setEditMode] = useState(false)
+  const [editForm, setEditForm] = useState({})
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (initialClient) {
       setClient(initialClient)
+      setEditForm({
+        phone: initialClient.phone || '',
+        make: initialClient.vehicle.make || '',
+        model: initialClient.vehicle.model || '',
+        year: initialClient.vehicle.year || '',
+        plate: initialClient.vehicle.plate || '',
+        km: initialClient.vehicle.km || 0
+      })
     } else if (user?.clientId) {
-      API.getClient(user.clientId).then(setClient)
+      API.getClient(user.clientId).then(c => {
+        setClient(c)
+        setEditForm({
+          phone: c.phone || '',
+          make: c.vehicle.make || '',
+          model: c.vehicle.model || '',
+          year: c.vehicle.year || '',
+          plate: c.vehicle.plate || '',
+          km: c.vehicle.km || 0
+        })
+      })
     }
     API.getStats().then(setStats)
   }, [user, initialClient])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await API.updateClient(user.clientId || client.id, {
+        phone: editForm.phone,
+        vehicle: {
+          make: editForm.make,
+          model: editForm.model,
+          year: editForm.year,
+          plate: editForm.plate,
+          km: parseInt(editForm.km) || 0
+        }
+      })
+      if (res.success) {
+        setClient(res.client)
+        setEditMode(false)
+      }
+    } catch(e) {
+      console.error('Error al guardar:', e)
+    }
+    setSaving(false)
+  }
 
   if (!client) return <div className="page"><p className="muted">Cargando...</p></div>
 
@@ -790,25 +834,72 @@ function ClientPortal({ user, client: initialClient }) {
       {tab==='perfil' && (
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem'}}>
           <div className="card" style={{padding:'1.5rem'}}>
-            <h3 style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>Datos personales</h3>
-            {[['Nombre',client.name],['Email',client.email],['Teléfono',client.phone],['Membresía',client.tier]].map(([l,v])=>(
-              <div key={l} className="confirm-row"><span className="confirm-row-label">{l}</span><span className="confirm-row-value">{v}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+              <h3 style={{fontWeight:600,fontSize:14}}>Datos personales</h3>
+              {!editMode && <button className="btn btn-sm btn-outline" onClick={()=>setEditMode(true)}>Editar</button>}
+            </div>
+            {[['Nombre',client.name],['Email',client.email],['Teléfono',editMode ? editForm.phone : client.phone],['Membresía',client.tier]].map(([l,v])=>(
+              <div key={l} className="confirm-row" style={{alignItems: l==='Teléfono' && editMode ? 'flex-start' : 'center'}}>
+                <span className="confirm-row-label">{l}</span>
+                {l==='Teléfono' && editMode ? (
+                  <input type="tel" value={editForm.phone} onChange={e=>setEditForm({...editForm,phone:e.target.value})} style={{flex:1}}/>
+                ) : (
+                  <span className="confirm-row-value">{v}</span>
+                )}
+              </div>
             ))}
           </div>
+          
           <div className="card" style={{padding:'1.5rem'}}>
-            <h3 style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>Vehículo</h3>
-            {[['Marca',client.vehicle.make],['Modelo',client.vehicle.model],['Año',client.vehicle.year],['Placa',client.vehicle.plate],['Kilometraje',`${km.toLocaleString('es-CO')} km`]].map(([l,v])=>(
-              <div key={l} className="confirm-row"><span className="confirm-row-label">{l}</span><span className="confirm-row-value">{v}</span></div>
-            ))}
-            <div style={{marginTop:'1rem'}}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--gray-500)',marginBottom:6}}>
-                <span>Próximo mantenimiento</span><span>{nextKm.toLocaleString('es-CO')} km</span>
-              </div>
-              <div style={{height:8,background:'var(--gray-100)',borderRadius:4,overflow:'hidden'}}>
-                <div style={{width:`${pct}%`,height:'100%',background:'var(--red)',borderRadius:4}}></div>
-              </div>
-              <div style={{fontSize:11,color:'var(--gray-500)',marginTop:4}}>{pct}% hacia el próximo cambio de aceite</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+              <h3 style={{fontWeight:600,fontSize:14}}>Vehículo</h3>
+              {editMode && (
+                <div style={{display:'flex',gap:'0.5rem'}}>
+                  <button className="btn btn-sm btn-primary" onClick={handleSave} disabled={saving}>{saving?'Guardando...':'Guardar'}</button>
+                  <button className="btn btn-sm btn-outline" onClick={()=>setEditMode(false)}>Cancelar</button>
+                </div>
+              )}
             </div>
+            
+            {editMode ? (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+                <div className="form-group">
+                  <label>Marca</label>
+                  <input type="text" value={editForm.make} onChange={e=>setEditForm({...editForm,make:e.target.value})} placeholder="Honda, Toyota, etc."/>
+                </div>
+                <div className="form-group">
+                  <label>Modelo</label>
+                  <input type="text" value={editForm.model} onChange={e=>setEditForm({...editForm,model:e.target.value})} placeholder="Civic, Corolla, etc."/>
+                </div>
+                <div className="form-group">
+                  <label>Año</label>
+                  <input type="number" value={editForm.year} onChange={e=>setEditForm({...editForm,year:e.target.value})} placeholder="2020"/>
+                </div>
+                <div className="form-group">
+                  <label>Placa</label>
+                  <input type="text" value={editForm.plate} onChange={e=>setEditForm({...editForm,plate:e.target.value.toUpperCase()})} placeholder="ABC-123"/>
+                </div>
+                <div className="form-group" style={{gridColumn:'1 / -1'}}>
+                  <label>Kilometraje actual</label>
+                  <input type="number" value={editForm.km} onChange={e=>setEditForm({...editForm,km:e.target.value})} placeholder="0"/>
+                </div>
+              </div>
+            ) : (
+              <>
+                {[['Marca',client.vehicle.make],['Modelo',client.vehicle.model],['Año',client.vehicle.year],['Placa',client.vehicle.plate],['Kilometraje',`${parseInt(client.vehicle.km).toLocaleString('es-CO')} km`]].map(([l,v])=>(
+                  <div key={l} className="confirm-row"><span className="confirm-row-label">{l}</span><span className="confirm-row-value">{v}</span></div>
+                ))}
+                <div style={{marginTop:'1rem'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--gray-500)',marginBottom:6}}>
+                    <span>Próximo mantenimiento</span><span>{nextKm.toLocaleString('es-CO')} km</span>
+                  </div>
+                  <div style={{height:8,background:'var(--gray-100)',borderRadius:4,overflow:'hidden'}}>
+                    <div style={{width:`${pct}%`,height:'100%',background:'var(--red)',borderRadius:4}}></div>
+                  </div>
+                  <div style={{fontSize:11,color:'var(--gray-500)',marginTop:4}}>{pct}% hacia el próximo cambio de aceite</div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

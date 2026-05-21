@@ -189,6 +189,28 @@ app.get('/api/clients/:id', (req, res) => {
   res.json({ ...client, appointments: DB.appointments.filter(a => a.clientEmail === client.email) });
 });
 
+app.put('/api/clients/:id', (req, res) => {
+  const client = DB.clients.find(c => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  
+  const { phone, vehicle } = req.body;
+  
+  if (phone) client.phone = phone;
+  if (vehicle) {
+    if (vehicle.make) client.vehicle.make = vehicle.make;
+    if (vehicle.model) client.vehicle.model = vehicle.model;
+    if (vehicle.year) client.vehicle.year = vehicle.year;
+    if (vehicle.plate) client.vehicle.plate = vehicle.plate;
+    if (vehicle.km !== undefined) client.vehicle.km = vehicle.km;
+  }
+  
+  res.json({
+    success: true,
+    message: 'Datos actualizados correctamente',
+    client: client
+  });
+});
+
 // ── STATS ─────────────────────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   res.json({
